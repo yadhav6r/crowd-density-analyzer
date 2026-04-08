@@ -8,14 +8,20 @@ from collections import deque
 
 # ---------------- UI ----------------
 st.set_page_config(layout="wide")
-st.title("🔥 AI Crowd Density Analyzer (Smart + Explained)")
+st.title("🔥 AI Crowd Density Analyzer (Hackathon Ready)")
+
+mode = st.selectbox("Use Case Mode", [
+    "Event Monitoring",
+    "Traffic Control",
+    "Emergency Detection"
+])
 
 st.markdown("""
-
+### 📊 Legend:
 - 🟩 Green → Low density
 - 🟧 Orange → Medium density
 - 🟥 Red → High density
-- 📈 Graph → People count over time (trend)
+- 📈 Graph → People count vs Time
 """)
 
 # ---------------- MODEL ----------------
@@ -29,7 +35,7 @@ uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
 stop_btn = st.button("🛑 Stop Processing")
 
 # ---------------- DATA ----------------
-history = deque(maxlen=30)
+history = deque(maxlen=50)
 
 # ---------------- MAIN ----------------
 if uploaded_file:
@@ -88,21 +94,34 @@ if uploaded_file:
 
                     zone_counts[row][col] += 1
 
-        # ---------------- DENSITY LOGIC ----------------
+        # ---------------- DENSITY ----------------
         avg_density = np.mean(zone_counts)
         max_density = np.max(zone_counts)
 
         score = 0.7 * max_density + 0.3 * avg_density
 
+        # dynamic thresholds based on mode
+        if mode == "Emergency Detection":
+            high_th = 4
+        else:
+            high_th = 6
+
         if score < 3:
             density = "LOW"
             color = (0,255,0)
-        elif score < 6:
+        elif score < high_th:
             density = "MEDIUM"
             color = (0,165,255)
         else:
             density = "HIGH"
             color = (0,0,255)
+
+        # ---------------- RISK SCORE ----------------
+        risk_score = int((people_count / 30) * 100)
+        risk_score = min(risk_score, 100)
+
+        # ---------------- HOTSPOT ----------------
+        hotspot = np.unravel_index(np.argmax(zone_counts), zone_counts.shape)
 
         # ---------------- HEATMAP ----------------
         overlay = frame.copy()
@@ -111,13 +130,11 @@ if uploaded_file:
             for j in range(cols):
 
                 count = zone_counts[i][j]
-
                 if count == 0:
                     continue
 
                 intensity = min(count / 10, 1.0)
 
-                # gradient (green → red)
                 color_zone = (
                     0,
                     int(255 * (1 - intensity)),
@@ -141,7 +158,6 @@ if uploaded_file:
         # ---------------- GRID ----------------
         for i in range(1, rows):
             cv2.line(frame, (0,i*zone_h), (w,i*zone_h), (255,255,255), 2)
-
         for j in range(1, cols):
             cv2.line(frame, (j*zone_w,0), (j*zone_w,h), (255,255,255), 2)
 
@@ -165,25 +181,56 @@ if uploaded_file:
 
         # ---------------- TEXT ----------------
         cv2.putText(frame, f"People: {people_count}",
-                    (10, h-100),
+                    (10, h-160),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
                     (0,255,255), 2)
 
         cv2.putText(frame, f"Density: {density}",
-                    (10, h-60),
+                    (10, h-120),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
                     color, 2)
 
+        cv2.putText(frame, f"Risk: {risk_score}%",
+                    (10, h-80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (0,0,255), 2)
+
         cv2.putText(frame, f"Trend: {trend}",
-                    (10, h-20),
+                    (10, h-40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (255,255,255), 2)
+
+        cv2.putText(frame, f"Hotspot: {hotspot}",
+                    (w-300, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
                     (255,255,255), 2)
 
         # ---------------- DISPLAY ----------------
         stframe.image(frame, channels="BGR")
 
+        # ---------------- DASHBOARD ----------------
+        col1, col2, col3 = st.columns(3)
+        col1.metric("👥 People", people_count)
+        col2.metric("🔥 Density", density)
+        col3.metric("⚠ Risk %", risk_score)
+
         # ---------------- GRAPH ----------------
         smooth = pd.Series(history).rolling(window=5).mean()
         chart.line_chart(smooth)
 
     cap.release()
+
+    # ---------------- DOWNLOAD ----------------
+    if st.button("📥 Download Report"):
+        df = pd.DataFrame(history, columns=["People Count"])
+        df.to_csv("crowd_report.csv", index=False)
+        st.success("Report saved!")
+
+# ---------------- REAL WORLD ----------------
+st.markdown("""
+### 🚀 Real-world Applications:
+- Crowd control in festivals
+- Railway station monitoring
+- Disaster evacuation tracking
+- Smart city surveillance
+""")
