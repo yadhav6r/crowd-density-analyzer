@@ -13,7 +13,7 @@ st.set_page_config(layout="wide")
 st.markdown("""
 <style>
 .big-title {
-    font-size: 40px;
+    font-size: 38px;
     font-weight: bold;
     color: #00FFC6;
 }
@@ -55,9 +55,19 @@ model = load_model()
 # ---------------- LAYOUT ----------------
 left, right = st.columns([2, 1])
 
-uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
-stop_btn = st.button("🛑 Stop Processing")
+# ---------------- LEFT PANEL (VIDEO) ----------------
+with left:
+    st.subheader("🎥 Video Input")
 
+    uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
+    stop_btn = st.button("🛑 Stop Processing")
+
+    if uploaded_file is None:
+        st.info("⬆ Upload a video to start AI analysis")
+
+    stframe = st.empty()
+
+# ---------------- RIGHT PANEL INIT ----------------
 history = deque(maxlen=50)
 
 # ---------------- MAIN PROCESS ----------------
@@ -67,14 +77,13 @@ if uploaded_file is not None:
     tfile.write(uploaded_file.read())
 
     cap = cv2.VideoCapture(tfile.name)
-    stframe = st.empty()
 
     frame_count = 0
 
     while cap.isOpened():
 
         if stop_btn:
-            st.warning("Stopped")
+            st.warning("Processing Stopped")
             break
 
         ret, frame = cap.read()
@@ -107,7 +116,7 @@ if uploaded_file is not None:
                     people_count += 1
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Draw box
+                    # Draw bounding box
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
 
                     # Zone mapping
@@ -124,23 +133,24 @@ if uploaded_file is not None:
 
         for i in range(rows):
             for j in range(cols):
+
                 count = zone_counts[i][j]
 
                 if count == 0:
                     continue
                 elif count < 5:
-                    color = (0, 200, 0)      # GREEN (LOW)
+                    color_zone = (0, 200, 0)      # 🟢 LOW
                 elif count < 10:
-                    color = (0, 165, 255)    # ORANGE (MEDIUM)
+                    color_zone = (0, 165, 255)    # 🟠 MEDIUM
                 else:
-                    color = (0, 0, 255)      # RED (HIGH)
+                    color_zone = (0, 0, 255)      # 🔴 HIGH
 
                 x1 = j * zone_w
                 y1 = i * zone_h
                 x2 = x1 + zone_w
                 y2 = y1 + zone_h
 
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
+                cv2.rectangle(overlay, (x1, y1), (x2, y2), color_zone, -1)
 
                 cv2.putText(frame, str(int(count)),
                             (x1 + 20, y1 + 40),
@@ -156,8 +166,8 @@ if uploaded_file is not None:
         for j in range(1, cols):
             cv2.line(frame, (j * zone_w, 0), (j * zone_w, h), (255,255,255), 2)
 
-        # ---------------- DENSITY LOGIC (FIXED) ----------------
-        density_ratio = people_count / (rows * cols * 10)
+        # ---------------- DENSITY LOGIC ----------------
+        density_ratio = people_count / 50  # tuned
 
         if density_ratio < 0.3:
             density = "LOW"
@@ -198,7 +208,9 @@ if uploaded_file is not None:
         with left:
             stframe.image(frame, channels="BGR")
 
+        # ---------------- RIGHT PANEL ----------------
         with right:
+
             st.subheader("📊 Analytics")
 
             c1, c2 = st.columns(2)
@@ -210,11 +222,11 @@ if uploaded_file is not None:
             c4.metric("📈 Trend", "Stable")
 
             if density == "LOW":
-                st.success("🟢 SAFE")
+                st.success("🟢 SAFE ZONE")
             elif density == "MEDIUM":
-                st.warning("🟠 MODERATE")
+                st.warning("🟠 MODERATE CROWD")
             else:
-                st.error("🔴 HIGH RISK")
+                st.error("🔴 HIGH RISK ALERT")
 
             st.markdown("---")
             st.subheader("📈 Crowd Trend")
