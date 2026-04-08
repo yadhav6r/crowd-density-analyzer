@@ -4,25 +4,27 @@ from ultralytics import YOLO
 import tempfile
 import numpy as np
 import pandas as pd
+from collections import deque
 
 # ---------------- UI ----------------
 st.set_page_config(layout="wide")
-st.title("🔥 AI Crowd Density Analyzer (Stable Version)")
+st.title("🔥 AI Crowd Density Analyzer (Smart Version)")
 
-# ---------------- LOAD MODEL ----------------
+# ---------------- MODEL ----------------
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
 
 model = load_model()
 
-# ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader("Upload a video", type=["mp4", "avi", "mov"])
-
+uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
 stop_btn = st.button("🛑 Stop Processing")
 
+# ---------------- SMOOTHING ----------------
+history = deque(maxlen=30)
+
 # ---------------- MAIN ----------------
-if uploaded_file is not None:
+if uploaded_file:
 
     tfile = tempfile.NamedTemporaryFile(delete=False)
     tfile.write(uploaded_file.read())
@@ -35,12 +37,10 @@ if uploaded_file is not None:
     frame_skip = 3
     frame_count = 0
 
-    density_history = []
-
     while cap.isOpened():
 
         if stop_btn:
-            st.warning("Processing Stopped")
+            st.warning("Processing stopped")
             break
 
         ret, frame = cap.read()
@@ -66,26 +66,37 @@ if uploaded_file is not None:
 
         for r in results:
             for box in r.boxes:
-                cls = int(box.cls[0])
-
-                if cls == 0:  # person
+                if int(box.cls[0]) == 0:
                     people_count += 1
 
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    cv2.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
 
-                    # Draw box
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+                    cx = (x1 + x2)//2
+                    cy = (y1 + y2)//2
 
-                    # Grid mapping
-                    cx = (x1 + x2) // 2
-                    cy = (y1 + y2) // 2
-
-                    row = min(cy // zone_h, rows - 1)
-                    col = min(cx // zone_w, cols - 1)
+                    row = min(cy // zone_h, rows-1)
+                    col = min(cx // zone_w, cols-1)
 
                     zone_counts[row][col] += 1
 
-        # ---------------- HEATMAP ----------------
+        # ---------------- IMPROVED DENSITY ----------------
+        avg_density = np.mean(zone_counts)
+        max_density = np.max(zone_counts)
+
+        score = 0.7 * max_density + 0.3 * avg_density
+
+        if score < 3:
+            density = "LOW"
+            color = (0,255,0)
+        elif score < 6:
+            density = "MEDIUM"
+            color = (0,165,255)
+        else:
+            density = "HIGH"
+            color = (0,0,255)
+
+        # ---------------- HEATMAP (GRADIENT) ----------------
         overlay = frame.copy()
 
         for i in range(rows):
@@ -95,47 +106,36 @@ if uploaded_file is not None:
 
                 if count == 0:
                     continue
-                elif count < 3:
-                    color_zone = (0,200,0)
-                elif count < 6:
-                    color_zone = (0,140,255)
-                else:
-                    color_zone = (0,0,255)
+
+                intensity = min(count / 10, 1.0)
+
+                # gradient color (green → red)
+                color_zone = (
+                    0,
+                    int(255 * (1 - intensity)),
+                    int(255 * intensity)
+                )
 
                 x1 = j * zone_w
                 y1 = i * zone_h
                 x2 = x1 + zone_w
                 y2 = y1 + zone_h
 
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), color_zone, -1)
+                cv2.rectangle(overlay, (x1,y1), (x2,y2), color_zone, -1)
 
-                # Zone count text
                 cv2.putText(frame, str(int(count)),
-                            (x1 + 20, y1 + 40),
+                            (x1+20, y1+40),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             1, (255,255,255), 2)
 
         frame = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
 
-        # ---------------- GRID LINES ----------------
+        # ---------------- GRID ----------------
         for i in range(1, rows):
-            cv2.line(frame, (0, i * zone_h), (w, i * zone_h), (255,255,255), 2)
+            cv2.line(frame, (0,i*zone_h), (w,i*zone_h), (255,255,255), 2)
 
         for j in range(1, cols):
-            cv2.line(frame, (j * zone_w, 0), (j * zone_w, h), (255,255,255), 2)
-
-        # ---------------- DENSITY ----------------
-        max_density = np.max(zone_counts)
-
-        if max_density < 3:
-            density = "LOW"
-            color = (0,255,0)
-        elif max_density < 6:
-            density = "MEDIUM"
-            color = (0,165,255)
-        else:
-            density = "HIGH"
-            color = (0,0,255)
+            cv2.line(frame, (j*zone_w,0), (j*zone_w,h), (255,255,255), 2)
 
         # ---------------- ALERT ----------------
         if density == "HIGH":
@@ -146,22 +146,22 @@ if uploaded_file is not None:
                         1.2, (255,255,255), 3)
 
         # ---------------- TEXT ----------------
-        cv2.putText(frame, f"Total People: {people_count}",
-                    (10, h - 60),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1, (0,255,255), 2)
+        cv2.putText(frame, f"People: {people_count}",
+                    (10, h-60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (0,255,255), 2)
 
         cv2.putText(frame, f"Density: {density}",
-                    (10, h - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1, color, 2)
+                    (10, h-20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    color, 2)
 
-        # ---------------- DISPLAY ----------------
         stframe.image(frame, channels="BGR")
 
-        # ---------------- GRAPH ----------------
-        density_history.append(people_count)
-        df = pd.DataFrame(density_history, columns=["People Count"])
-        chart.line_chart(df)
+        # ---------------- SMOOTH GRAPH ----------------
+        history.append(people_count)
+        smooth = pd.Series(history).rolling(window=5).mean()
+
+        chart.line_chart(smooth)
 
     cap.release()
