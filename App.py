@@ -9,43 +9,32 @@ from collections import deque
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(layout="wide")
 
-# ---------------- STYLING ----------------
+# ---------------- TITLE ----------------
 st.markdown("""
-<style>
-.big-title {
-    font-size: 38px;
-    font-weight: bold;
-    color: #00FFC6;
-}
-</style>
+<h1 style='color:#00FFC6;'>🔥 AI Crowd Intelligence Dashboard</h1>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="big-title">🔥 AI Crowd Intelligence Dashboard</p>', unsafe_allow_html=True)
-
 st.markdown("""
-### 🚀 Real-time Crowd Monitoring System
+### 🚀 Real-time Crowd Monitoring System  
 - 🔍 AI Detection + Heatmap  
-- 📊 Live Crowd Trend  
+- 📊 Crowd Trend Analysis  
 - ⚠ Smart Alerts  
+
+### 📊 Graph Meaning:
+- X-axis → Time (Frames / Video Progress)  
+- Y-axis → Number of People  
+- 📈 Increasing → Crowd building  
+- 📉 Decreasing → Crowd dispersing  
 """)
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.header("⚙ Controls")
 
-    mode = st.selectbox("Mode", [
-        "Event Monitoring",
-        "Traffic Control",
-        "Emergency Detection"
-    ])
-
     conf = st.slider("Detection Confidence", 0.1, 0.9, 0.3)
     frame_skip = st.slider("Performance Speed", 1, 5, 3)
 
-    st.markdown("---")
-    st.info("Built for Hackathon Demo 🚀")
-
-# ---------------- LOAD MODEL ----------------
+# ---------------- MODEL ----------------
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
@@ -53,9 +42,9 @@ def load_model():
 model = load_model()
 
 # ---------------- LAYOUT ----------------
-left, right = st.columns([2, 1])
+left, right = st.columns([2,1])
 
-# ---------------- LEFT PANEL (VIDEO) ----------------
+# ---------------- VIDEO PANEL ----------------
 with left:
     st.subheader("🎥 Video Input")
 
@@ -63,15 +52,18 @@ with left:
     stop_btn = st.button("🛑 Stop Processing")
 
     if uploaded_file is None:
-        st.info("⬆ Upload a video to start AI analysis")
+        st.info("⬆ Upload a video to start")
 
     stframe = st.empty()
 
-# ---------------- RIGHT PANEL INIT ----------------
+# ---------------- RIGHT PANEL PLACEHOLDERS ----------------
+analytics_placeholder = right.empty()
+chart_placeholder = right.empty()
+
 history = deque(maxlen=50)
 
-# ---------------- MAIN PROCESS ----------------
-if uploaded_file is not None:
+# ---------------- MAIN ----------------
+if uploaded_file:
 
     tfile = tempfile.NamedTemporaryFile(delete=False)
     tfile.write(uploaded_file.read())
@@ -83,7 +75,6 @@ if uploaded_file is not None:
     while cap.isOpened():
 
         if stop_btn:
-            st.warning("Processing Stopped")
             break
 
         ret, frame = cap.read()
@@ -97,7 +88,7 @@ if uploaded_file is not None:
         h, w, _ = frame.shape
 
         # ---------------- GRID ----------------
-        rows, cols = 3, 3
+        rows, cols = 3,3
         zone_h = h // rows
         zone_w = w // cols
 
@@ -110,21 +101,17 @@ if uploaded_file is not None:
 
         for r in results:
             for box in r.boxes:
-                cls = int(box.cls[0])
-
-                if cls == 0:
+                if int(box.cls[0]) == 0:
                     people_count += 1
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Draw bounding box
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+                    x1,y1,x2,y2 = map(int, box.xyxy[0])
+                    cv2.rectangle(frame,(x1,y1),(x2,y2),(0,255,0),2)
 
-                    # Zone mapping
-                    cx = (x1 + x2) // 2
-                    cy = (y1 + y2) // 2
+                    cx = (x1+x2)//2
+                    cy = (y1+y2)//2
 
-                    row = min(cy // zone_h, rows - 1)
-                    col = min(cx // zone_w, cols - 1)
+                    row = min(cy//zone_h, rows-1)
+                    col = min(cx//zone_w, cols-1)
 
                     zone_counts[row][col] += 1
 
@@ -139,97 +126,97 @@ if uploaded_file is not None:
                 if count == 0:
                     continue
                 elif count < 5:
-                    color_zone = (0, 200, 0)      # 🟢 LOW
+                    color_zone = (0,200,0)   # LOW
                 elif count < 10:
-                    color_zone = (0, 165, 255)    # 🟠 MEDIUM
+                    color_zone = (0,165,255) # MEDIUM
                 else:
-                    color_zone = (0, 0, 255)      # 🔴 HIGH
+                    color_zone = (0,0,255)   # HIGH
 
-                x1 = j * zone_w
-                y1 = i * zone_h
-                x2 = x1 + zone_w
-                y2 = y1 + zone_h
+                x1 = j*zone_w
+                y1 = i*zone_h
+                x2 = x1+zone_w
+                y2 = y1+zone_h
 
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), color_zone, -1)
+                cv2.rectangle(overlay,(x1,y1),(x2,y2),color_zone,-1)
 
-                cv2.putText(frame, str(int(count)),
-                            (x1 + 20, y1 + 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1,
-                            (255,255,255), 2)
+                cv2.putText(frame,str(int(count)),
+                            (x1+20,y1+40),
+                            cv2.FONT_HERSHEY_SIMPLEX,1,
+                            (255,255,255),2)
 
-        frame = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
+        frame = cv2.addWeighted(overlay,0.4,frame,0.6,0)
 
-        # ---------------- GRID LINES ----------------
-        for i in range(1, rows):
-            cv2.line(frame, (0, i * zone_h), (w, i * zone_h), (255,255,255), 2)
+        # ---------------- GRID ----------------
+        for i in range(1,rows):
+            cv2.line(frame,(0,i*zone_h),(w,i*zone_h),(255,255,255),2)
 
-        for j in range(1, cols):
-            cv2.line(frame, (j * zone_w, 0), (j * zone_w, h), (255,255,255), 2)
+        for j in range(1,cols):
+            cv2.line(frame,(j*zone_w,0),(j*zone_w,h),(255,255,255),2)
 
-        # ---------------- DENSITY LOGIC ----------------
-        density_ratio = people_count / 50  # tuned
+        # ---------------- DENSITY ----------------
+        density_ratio = people_count / 50
 
         if density_ratio < 0.3:
             density = "LOW"
             color = (0,255,0)
-            risk_score = 30
+            risk = 30
         elif density_ratio < 0.6:
             density = "MEDIUM"
             color = (0,165,255)
-            risk_score = 60
+            risk = 60
         else:
             density = "HIGH"
             color = (0,0,255)
-            risk_score = 90
+            risk = 90
 
         # ---------------- ALERT ----------------
         if density == "HIGH":
-            cv2.rectangle(frame, (0,0), (w,80), (0,0,255), -1)
-            cv2.putText(frame, "⚠ HIGH CROWD ALERT ⚠",
+            cv2.rectangle(frame,(0,0),(w,80),(0,0,255),-1)
+            cv2.putText(frame,"⚠ HIGH CROWD ALERT ⚠",
                         (50,50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.2,
-                        (255,255,255), 3)
+                        cv2.FONT_HERSHEY_SIMPLEX,1.2,
+                        (255,255,255),3)
 
         # ---------------- TEXT ----------------
-        cv2.putText(frame, f"Total People: {people_count}",
-                    (10, h - 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1,
-                    (0,255,255), 2)
+        cv2.putText(frame,f"People: {people_count}",
+                    (10,h-60),
+                    cv2.FONT_HERSHEY_SIMPLEX,1,
+                    (0,255,255),2)
 
-        cv2.putText(frame, f"Density: {density}",
-                    (10, h - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1,
-                    color, 2)
+        cv2.putText(frame,f"Density: {density}",
+                    (10,h-20),
+                    cv2.FONT_HERSHEY_SIMPLEX,1,
+                    color,2)
 
-        # ---------------- GRAPH ----------------
         history.append(people_count)
 
         # ---------------- DISPLAY ----------------
         with left:
             stframe.image(frame, channels="BGR")
 
-        # ---------------- RIGHT PANEL ----------------
-        with right:
-
+        # ---------------- ANALYTICS ----------------
+        with analytics_placeholder:
             st.subheader("📊 Analytics")
 
-            c1, c2 = st.columns(2)
-            c3, c4 = st.columns(2)
+            c1,c2 = st.columns(2)
+            c3,c4 = st.columns(2)
 
             c1.metric("👥 People", people_count)
             c2.metric("🔥 Density", density)
-            c3.metric("⚠ Risk", f"{risk_score}%")
-            c4.metric("📈 Trend", "Stable")
+            c3.metric("⚠ Risk", f"{risk}%")
+            c4.metric("📈 Trend", "Live")
 
             if density == "LOW":
-                st.success("🟢 SAFE ZONE")
+                st.success("🟢 SAFE")
             elif density == "MEDIUM":
-                st.warning("🟠 MODERATE CROWD")
+                st.warning("🟠 MODERATE")
             else:
-                st.error("🔴 HIGH RISK ALERT")
+                st.error("🔴 HIGH RISK")
 
-            st.markdown("---")
-            st.subheader("📈 Crowd Trend")
+        # ---------------- GRAPH ----------------
+        with chart_placeholder:
+            st.subheader("📈 Crowd Trend (People vs Time)")
+            st.caption("X-axis: Time (Frames) | Y-axis: People Count")
 
             smooth = pd.Series(history).rolling(window=5).mean()
             st.line_chart(smooth)
