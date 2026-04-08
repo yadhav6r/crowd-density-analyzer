@@ -11,7 +11,7 @@ st.set_page_config(layout="wide")
 
 # ---------------- TITLE ----------------
 st.markdown("""
-<h1 style='color:#00FFC6;'>🔥 AI Crowd Intelligence Dashboard</h1>
+<h1 style='color:#00FFC6;'> Crowd Intelligence Dashboard</h1>
 """, unsafe_allow_html=True)
 
 st.markdown("""
