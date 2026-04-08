@@ -90,25 +90,26 @@ if uploaded_file is not None:
                 if count == 0:
                     continue
                 elif count < 3:
-                    color = (0, 200, 0)       # Green
+                    color_zone = (0, 200, 0)       # Green
                 elif count < 6:
-                    color = (0, 140, 255)     # Orange
+                    color_zone = (0, 140, 255)     # Orange
                 else:
-                    color = (0, 0, 255)       # Red
+                    color_zone = (0, 0, 255)       # Red
 
                 x1 = j * cell_w
                 y1 = i * cell_h
                 x2 = x1 + cell_w
                 y2 = y1 + cell_h
 
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
+                cv2.rectangle(overlay, (x1, y1), (x2, y2), color_zone, -1)
 
+                # Zone count text
                 cv2.putText(frame, f"{int(count)}",
                             (x1 + 20, y1 + 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 1,
                             (255,255,255), 2)
 
-        # Blend heatmap
+        # Blend overlay
         frame = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
 
         # ---------------- GRID LINES ----------------
@@ -120,11 +121,12 @@ if uploaded_file is not None:
 
         # ---------------- SMART DENSITY ----------------
         max_density = np.max(grid_counts)
+        avg_density = np.mean(grid_counts)
 
-        if max_density < 3:
+        if max_density < 3 and avg_density < 1.5:
             density = "LOW"
             color = (0,255,0)
-        elif max_density < 6:
+        elif max_density < 6 and avg_density < 3:
             density = "MEDIUM"
             color = (0,165,255)
         else:
@@ -149,6 +151,16 @@ if uploaded_file is not None:
                     (10, h - 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
                     color, 2)
+
+        cv2.putText(frame, f"Max Zone: {int(max_density)}",
+                    (10, h - 100),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (255,255,0), 2)
+
+        cv2.putText(frame, f"Avg Density: {avg_density:.2f}",
+                    (10, h - 140),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (255,255,0), 2)
 
         # ---------------- DISPLAY ----------------
         stframe.image(frame, channels="BGR")
