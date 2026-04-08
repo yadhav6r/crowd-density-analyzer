@@ -15,24 +15,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("""
-### 🚀 Real-time Crowd Monitoring System  
-- 🔍 AI Detection + Heatmap  
-- 📊 Crowd Trend Analysis  
-- ⚠ Smart Alerts  
+### 📊 Crowd Monitoring System  
+- Heatmap + Detection  
+- Live Trend Graph  
+- Smart Alerts  
 
-### 📊 Graph Meaning:
-- X-axis → Time (Frames / Video Progress)  
-- Y-axis → Number of People  
-- 📈 Increasing → Crowd building  
-- 📉 Decreasing → Crowd dispersing  
+📈 Graph:
+- X → Time (Frames)
+- Y → People Count
 """)
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.header("⚙ Controls")
-
-    conf = st.slider("Detection Confidence", 0.1, 0.9, 0.3)
-    frame_skip = st.slider("Performance Speed", 1, 5, 3)
+    conf = st.slider("Confidence", 0.1, 0.9, 0.3)
+    frame_skip = st.slider("Speed", 1, 5, 3)
 
 # ---------------- MODEL ----------------
 @st.cache_resource
@@ -47,19 +44,36 @@ left, right = st.columns([2,1])
 # ---------------- VIDEO PANEL ----------------
 with left:
     st.subheader("🎥 Video Input")
-
     uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
-    stop_btn = st.button("🛑 Stop Processing")
+    stop_btn = st.button("🛑 Stop")
 
     if uploaded_file is None:
-        st.info("⬆ Upload a video to start")
+        st.info("Upload video to start")
 
     stframe = st.empty()
 
-# ---------------- RIGHT PANEL PLACEHOLDERS ----------------
-analytics_placeholder = right.empty()
-chart_placeholder = right.empty()
+# ---------------- RIGHT PANEL (STATIC STRUCTURE) ----------------
+with right:
+    st.subheader("📊 Analytics")
 
+    col1, col2 = st.columns(2)
+    col3, col4 = st.columns(2)
+
+    people_metric = col1.empty()
+    density_metric = col2.empty()
+    risk_metric = col3.empty()
+    trend_metric = col4.empty()
+
+    status_box = st.empty()
+
+    st.markdown("---")
+
+    st.subheader("📈 Crowd Trend")
+    st.caption("X: Time | Y: People Count")
+
+    chart_placeholder = st.empty()
+
+# ---------------- DATA ----------------
 history = deque(maxlen=50)
 
 # ---------------- MAIN ----------------
@@ -126,11 +140,11 @@ if uploaded_file:
                 if count == 0:
                     continue
                 elif count < 5:
-                    color_zone = (0,200,0)   # LOW
+                    color_zone = (0,200,0)
                 elif count < 10:
-                    color_zone = (0,165,255) # MEDIUM
+                    color_zone = (0,165,255)
                 else:
-                    color_zone = (0,0,255)   # HIGH
+                    color_zone = (0,0,255)
 
                 x1 = j*zone_w
                 y1 = i*zone_h
@@ -145,13 +159,6 @@ if uploaded_file:
                             (255,255,255),2)
 
         frame = cv2.addWeighted(overlay,0.4,frame,0.6,0)
-
-        # ---------------- GRID ----------------
-        for i in range(1,rows):
-            cv2.line(frame,(0,i*zone_h),(w,i*zone_h),(255,255,255),2)
-
-        for j in range(1,cols):
-            cv2.line(frame,(j*zone_w,0),(j*zone_w,h),(255,255,255),2)
 
         # ---------------- DENSITY ----------------
         density_ratio = people_count / 50
@@ -188,37 +195,34 @@ if uploaded_file:
                     cv2.FONT_HERSHEY_SIMPLEX,1,
                     color,2)
 
+        # ---------------- UPDATE DATA ----------------
         history.append(people_count)
 
-        # ---------------- DISPLAY ----------------
-        with left:
-            stframe.image(frame, channels="BGR")
+        trend = "Stable"
+        if len(history) > 5:
+            if history[-1] > history[-5]:
+                trend = "Increasing"
+            elif history[-1] < history[-5]:
+                trend = "Decreasing"
 
-        # ---------------- ANALYTICS ----------------
-        with analytics_placeholder:
-            st.subheader("📊 Analytics")
+        # ---------------- DISPLAY VIDEO ----------------
+        stframe.image(frame, channels="BGR")
 
-            c1,c2 = st.columns(2)
-            c3,c4 = st.columns(2)
+        # ---------------- UPDATE METRICS ONLY ----------------
+        people_metric.metric("👥 People", people_count)
+        density_metric.metric("🔥 Density", density)
+        risk_metric.metric("⚠ Risk", f"{risk}%")
+        trend_metric.metric("📈 Trend", trend)
 
-            c1.metric("👥 People", people_count)
-            c2.metric("🔥 Density", density)
-            c3.metric("⚠ Risk", f"{risk}%")
-            c4.metric("📈 Trend", "Live")
+        if density == "LOW":
+            status_box.success("🟢 SAFE")
+        elif density == "MEDIUM":
+            status_box.warning("🟠 MODERATE")
+        else:
+            status_box.error("🔴 HIGH RISK")
 
-            if density == "LOW":
-                st.success("🟢 SAFE")
-            elif density == "MEDIUM":
-                st.warning("🟠 MODERATE")
-            else:
-                st.error("🔴 HIGH RISK")
-
-        # ---------------- GRAPH ----------------
-        with chart_placeholder:
-            st.subheader("📈 Crowd Trend (People vs Time)")
-            st.caption("X-axis: Time (Frames) | Y-axis: People Count")
-
-            smooth = pd.Series(history).rolling(window=5).mean()
-            st.line_chart(smooth)
+        # ---------------- UPDATE GRAPH ONLY ----------------
+        smooth = pd.Series(history).rolling(window=5).mean()
+        chart_placeholder.line_chart(smooth)
 
     cap.release()
