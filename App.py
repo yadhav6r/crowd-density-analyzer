@@ -121,25 +121,7 @@ if uploaded_file is not None:
         for j in range(1, cols):
             cv2.line(frame, (j * zone_w, 0), (j * zone_w, h), (255,255,255), 2)
 
-        # ---------------- DENSITY LOGIC ----------------
-        # Calculate area
-frame_area = frame.shape[0] * frame.shape[1]
-
-# Estimate crowd area (sum of bbox areas)
-crowd_area = 0
-
-for r in results:
-    for box in r.boxes:
-        cls = int(box.cls[0])
-        if cls == 0:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            area = (x2 - x1) * (y2 - y1)
-            crowd_area += area
-
-# Density ratio
-density_ratio = crowd_area / frame_area
-
-# Smarter classification
+     # ---------------- DENSITY LOGIC ----------------
 if density_ratio < 0.05:
     density = "LOW"
     color = (0,255,0)
@@ -150,15 +132,13 @@ else:
     density = "HIGH"
     color = (0,0,255)
 
-        # ---------------- ALERT ----------------
-        if density == "HIGH":
-            cv2.rectangle(frame, (0,0), (w,80), (0,0,255), -1)
-            cv2.putText(frame, "⚠ HIGH CROWD ALERT ⚠",
-                        (50,50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.2,
-                        (255,255,255), 3)
-
-        # ---------------- TEXT INFO ----------------
+# ---------------- ALERT ----------------
+if density == "HIGH":
+    cv2.rectangle(frame, (0,0), (w,80), (0,0,255), -1)
+    cv2.putText(frame, "⚠ HIGH CROWD ALERT ⚠",
+                (50,50),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.2,
+                (255,255,255), 3)   # ---------------- TEXT INFO ----------------
         cv2.putText(frame, f"Total People: {people_count}",
                     (10, h - 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
