@@ -11,7 +11,7 @@ st.set_page_config(layout="wide")
 st.title("🔥 AI Crowd Density Analyzer (Smart + Explained)")
 
 st.markdown("""
-### 📊 Legend:
+
 - 🟩 Green → Low density
 - 🟧 Orange → Medium density
 - 🟥 Red → High density
