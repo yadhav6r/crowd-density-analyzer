@@ -50,7 +50,13 @@ if uploaded_file is not None:
         results = model(frame, conf=0.3)
 
         people_count = 0
-        crowd_area = 0
+
+        # ---------------- GRID SETUP ----------------
+        grid_size = 3
+        cell_h = h // grid_size
+        cell_w = w // grid_size
+
+        grid_counts = np.zeros((grid_size, grid_size))
 
         for r in results:
             for box in r.boxes:
@@ -61,21 +67,64 @@ if uploaded_file is not None:
 
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Draw box
+                    # Draw bounding box
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
 
-                    # Area calc
-                    area = (x2 - x1) * (y2 - y1)
-                    crowd_area += area
+                    # Center point
+                    cx = (x1 + x2) // 2
+                    cy = (y1 + y2) // 2
 
-        # ---------------- DENSITY CALC ----------------
-        frame_area = h * w
-        density_ratio = crowd_area / frame_area
+                    row = min(cy // cell_h, grid_size - 1)
+                    col = min(cx // cell_w, grid_size - 1)
 
-        if density_ratio < 0.05:
+                    grid_counts[row][col] += 1
+
+        # ---------------- HEATMAP ----------------
+        overlay = frame.copy()
+
+        for i in range(grid_size):
+            for j in range(grid_size):
+
+                count = grid_counts[i][j]
+
+                if count == 0:
+                    continue
+                elif count < 3:
+                    color = (0, 200, 0)       # Green
+                elif count < 6:
+                    color = (0, 140, 255)     # Orange
+                else:
+                    color = (0, 0, 255)       # Red
+
+                x1 = j * cell_w
+                y1 = i * cell_h
+                x2 = x1 + cell_w
+                y2 = y1 + cell_h
+
+                cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
+
+                cv2.putText(frame, f"{int(count)}",
+                            (x1 + 20, y1 + 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1,
+                            (255,255,255), 2)
+
+        # Blend heatmap
+        frame = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
+
+        # ---------------- GRID LINES ----------------
+        for i in range(1, grid_size):
+            cv2.line(frame, (0, i * cell_h), (w, i * cell_h), (255,255,255), 2)
+
+        for j in range(1, grid_size):
+            cv2.line(frame, (j * cell_w, 0), (j * cell_w, h), (255,255,255), 2)
+
+        # ---------------- SMART DENSITY ----------------
+        max_density = np.max(grid_counts)
+
+        if max_density < 3:
             density = "LOW"
             color = (0,255,0)
-        elif density_ratio < 0.15:
+        elif max_density < 6:
             density = "MEDIUM"
             color = (0,165,255)
         else:
