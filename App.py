@@ -8,7 +8,15 @@ from collections import deque
 
 # ---------------- UI ----------------
 st.set_page_config(layout="wide")
-st.title("🔥 AI Crowd Density Analyzer (Smart Version)")
+st.title("🔥 AI Crowd Density Analyzer (Smart + Explained)")
+
+st.markdown("""
+### 📊 Legend:
+- 🟩 Green → Low density
+- 🟧 Orange → Medium density
+- 🟥 Red → High density
+- 📈 Graph → People count over time (trend)
+""")
 
 # ---------------- MODEL ----------------
 @st.cache_resource
@@ -20,7 +28,7 @@ model = load_model()
 uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
 stop_btn = st.button("🛑 Stop Processing")
 
-# ---------------- SMOOTHING ----------------
+# ---------------- DATA ----------------
 history = deque(maxlen=30)
 
 # ---------------- MAIN ----------------
@@ -80,7 +88,7 @@ if uploaded_file:
 
                     zone_counts[row][col] += 1
 
-        # ---------------- IMPROVED DENSITY ----------------
+        # ---------------- DENSITY LOGIC ----------------
         avg_density = np.mean(zone_counts)
         max_density = np.max(zone_counts)
 
@@ -96,7 +104,7 @@ if uploaded_file:
             density = "HIGH"
             color = (0,0,255)
 
-        # ---------------- HEATMAP (GRADIENT) ----------------
+        # ---------------- HEATMAP ----------------
         overlay = frame.copy()
 
         for i in range(rows):
@@ -109,7 +117,7 @@ if uploaded_file:
 
                 intensity = min(count / 10, 1.0)
 
-                # gradient color (green → red)
+                # gradient (green → red)
                 color_zone = (
                     0,
                     int(255 * (1 - intensity)),
@@ -137,6 +145,16 @@ if uploaded_file:
         for j in range(1, cols):
             cv2.line(frame, (j*zone_w,0), (j*zone_w,h), (255,255,255), 2)
 
+        # ---------------- TREND ----------------
+        history.append(people_count)
+
+        trend = "STABLE"
+        if len(history) > 5:
+            if history[-1] > history[-5]:
+                trend = "INCREASING"
+            elif history[-1] < history[-5]:
+                trend = "DECREASING"
+
         # ---------------- ALERT ----------------
         if density == "HIGH":
             cv2.rectangle(frame, (0,0), (w,80), (0,0,255), -1)
@@ -147,21 +165,25 @@ if uploaded_file:
 
         # ---------------- TEXT ----------------
         cv2.putText(frame, f"People: {people_count}",
-                    (10, h-60),
+                    (10, h-100),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
                     (0,255,255), 2)
 
         cv2.putText(frame, f"Density: {density}",
-                    (10, h-20),
+                    (10, h-60),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
                     color, 2)
 
+        cv2.putText(frame, f"Trend: {trend}",
+                    (10, h-20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (255,255,255), 2)
+
+        # ---------------- DISPLAY ----------------
         stframe.image(frame, channels="BGR")
 
-        # ---------------- SMOOTH GRAPH ----------------
-        history.append(people_count)
+        # ---------------- GRAPH ----------------
         smooth = pd.Series(history).rolling(window=5).mean()
-
         chart.line_chart(smooth)
 
     cap.release()
