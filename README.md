@@ -1,6 +1,6 @@
-# 🔥 AI Crowd Density Analyzer (Advanced)
+# 🔥 Crowd Density Analyzer (Advanced)
 
-An AI-powered system that analyzes crowd density using computer vision and YOLOv8.
+system that analyzes crowd density using computer vision and YOLOv8.
 
 ## 🚀 Features
 - Real-time people detection
