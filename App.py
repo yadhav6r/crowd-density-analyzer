@@ -8,7 +8,7 @@ import numpy as np
 st.set_page_config(layout="wide")
 st.title("🔥 AI Crowd Density Analyzer (Advanced)")
 
-# ---------------- LOAD MODEL (CACHED) ----------------
+# ---------------- LOAD MODEL ----------------
 @st.cache_resource
 def load_model():
     return YOLO("yolov8n.pt")
@@ -17,7 +17,6 @@ model = load_model()
 
 # ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader("Upload a video", type=["mp4", "avi", "mov"])
-
 stop_btn = st.button("🛑 Stop Processing")
 
 if uploaded_file is not None:
@@ -47,17 +46,11 @@ if uploaded_file is not None:
 
         h, w, _ = frame.shape
 
-        # ---------------- GRID SETUP ----------------
-        rows, cols = 3, 3
-        zone_h = h // rows
-        zone_w = w // cols
-
-        zone_counts = np.zeros((rows, cols))
-
         # ---------------- DETECTION ----------------
         results = model(frame, conf=0.3)
 
         people_count = 0
+        crowd_area = 0
 
         for r in results:
             for box in r.boxes:
@@ -68,77 +61,36 @@ if uploaded_file is not None:
 
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Draw bounding box
+                    # Draw box
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
 
-                    # Zone calculation
-                    cx = (x1 + x2) // 2
-                    cy = (y1 + y2) // 2
+                    # Area calc
+                    area = (x2 - x1) * (y2 - y1)
+                    crowd_area += area
 
-                    row = min(cy // zone_h, rows - 1)
-                    col = min(cx // zone_w, cols - 1)
+        # ---------------- DENSITY CALC ----------------
+        frame_area = h * w
+        density_ratio = crowd_area / frame_area
 
-                    zone_counts[row][col] += 1
+        if density_ratio < 0.05:
+            density = "LOW"
+            color = (0,255,0)
+        elif density_ratio < 0.15:
+            density = "MEDIUM"
+            color = (0,165,255)
+        else:
+            density = "HIGH"
+            color = (0,0,255)
 
-        # ---------------- HEATMAP ----------------
-        overlay = frame.copy()
+        # ---------------- ALERT ----------------
+        if density == "HIGH":
+            cv2.rectangle(frame, (0,0), (w,80), (0,0,255), -1)
+            cv2.putText(frame, "⚠ HIGH CROWD ALERT ⚠",
+                        (50,50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2,
+                        (255,255,255), 3)
 
-        for i in range(rows):
-            for j in range(cols):
-
-                count = zone_counts[i][j]
-
-                if count == 0:
-                    continue
-                elif count < 5:
-                    color = (0, 200, 0)       # Green
-                elif count < 10:
-                    color = (0, 140, 255)     # Orange
-                else:
-                    color = (0, 0, 255)       # Red
-
-                x1 = j * zone_w
-                y1 = i * zone_h
-                x2 = x1 + zone_w
-                y2 = y1 + zone_h
-
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
-
-                # Zone text
-                cv2.putText(frame, f"{int(count)}",
-                            (x1 + 20, y1 + 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1,
-                            (255,255,255), 2)
-
-        # Blend overlay
-        alpha = 0.4
-        frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
-
-        # ---------------- GRID LINES ----------------
-        for i in range(1, rows):
-            cv2.line(frame, (0, i * zone_h), (w, i * zone_h), (255,255,255), 2)
-
-        for j in range(1, cols):
-            cv2.line(frame, (j * zone_w, 0), (j * zone_w, h), (255,255,255), 2)
-
-     # ---------------- DENSITY LOGIC ----------------
-if density_ratio < 0.05:
-    density = "LOW"
-    color = (0,255,0)
-elif density_ratio < 0.15:
-    density = "MEDIUM"
-    color = (0,165,255)
-else:
-    density = "HIGH"
-    color = (0,0,255)
-
-# ---------------- ALERT ----------------
-if density == "HIGH":
-    cv2.rectangle(frame, (0,0), (w,80), (0,0,255), -1)
-    cv2.putText(frame, "⚠ HIGH CROWD ALERT ⚠",
-                (50,50),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.2,
-                (255,255,255), 3)   # ---------------- TEXT INFO ----------------
+        # ---------------- TEXT ----------------
         cv2.putText(frame, f"Total People: {people_count}",
                     (10, h - 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 1,
