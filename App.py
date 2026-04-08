@@ -122,15 +122,33 @@ if uploaded_file is not None:
             cv2.line(frame, (j * zone_w, 0), (j * zone_w, h), (255,255,255), 2)
 
         # ---------------- DENSITY LOGIC ----------------
-        if people_count < 10:
-            density = "LOW"
-            color = (0,255,0)
-        elif people_count < 25:
-            density = "MEDIUM"
-            color = (0,165,255)
-        else:
-            density = "HIGH"
-            color = (0,0,255)
+        # Calculate area
+frame_area = frame.shape[0] * frame.shape[1]
+
+# Estimate crowd area (sum of bbox areas)
+crowd_area = 0
+
+for r in results:
+    for box in r.boxes:
+        cls = int(box.cls[0])
+        if cls == 0:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            area = (x2 - x1) * (y2 - y1)
+            crowd_area += area
+
+# Density ratio
+density_ratio = crowd_area / frame_area
+
+# Smarter classification
+if density_ratio < 0.05:
+    density = "LOW"
+    color = (0,255,0)
+elif density_ratio < 0.15:
+    density = "MEDIUM"
+    color = (0,165,255)
+else:
+    density = "HIGH"
+    color = (0,0,255)
 
         # ---------------- ALERT ----------------
         if density == "HIGH":
