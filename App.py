@@ -10,31 +10,28 @@ from collections import deque
 st.set_page_config(layout="wide")
 
 # ---------------- TITLE ----------------
-st.markdown("""
-<h1 style='color:#00FFC6;'> Crowd Intelligence Dashboard</h1>
-""", unsafe_allow_html=True)
+st.markdown("<h1 style='color:#00FFC6;'> Crowd Intelligence Dashboard</h1>", unsafe_allow_html=True)
 
 st.markdown("""
 ### 📊 Crowd Monitoring System  
 - Heatmap + Detection  
 - Live Trend Graph  
 - Smart Alerts  
-
-📈 Graph:
-- X → Time (Frames)
-- Y → People Count
 """)
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.header("⚙ Controls")
     conf = st.slider("Confidence", 0.1, 0.9, 0.3)
-    frame_skip = st.slider("Speed", 1, 5, 3)
+    frame_skip = st.slider("Speed (Performance)", 2, 10, 5)
 
 # ---------------- MODEL ----------------
 @st.cache_resource
 def load_model():
-    return YOLO("yolov8n.pt")
+    model = YOLO("yolov8n.pt", task="detect")
+    # warmup (prevents first-frame lag)
+    model(np.zeros((640,640,3), dtype=np.uint8))
+    return model
 
 model = load_model()
 
@@ -47,12 +44,14 @@ with left:
     uploaded_file = st.file_uploader("Upload Video", type=["mp4","avi","mov"])
     stop_btn = st.button("🛑 Stop")
 
-    if uploaded_file is None:
-        st.info("Upload video to start")
+    if uploaded_file:
+        if uploaded_file.size > 50 * 1024 * 1024:
+            st.error("❌ Video too large (Max: 50MB)")
+            st.stop()
 
     stframe = st.empty()
 
-# ---------------- RIGHT PANEL (STATIC STRUCTURE) ----------------
+# ---------------- RIGHT PANEL ----------------
 with right:
     st.subheader("📊 Analytics")
 
@@ -69,8 +68,6 @@ with right:
     st.markdown("---")
 
     st.subheader("📈 Crowd Trend")
-    st.caption("X: Time | Y: People Count")
-
     chart_placeholder = st.empty()
 
 # ---------------- DATA ----------------
@@ -83,10 +80,10 @@ if uploaded_file:
     tfile.write(uploaded_file.read())
 
     cap = cv2.VideoCapture(tfile.name)
-
     frame_count = 0
 
-    while cap.isOpened():
+    # SAFETY LOOP LIMIT (prevents freeze)
+    for _ in range(1000):
 
         if stop_btn:
             break
@@ -102,20 +99,18 @@ if uploaded_file:
         h, w, _ = frame.shape
 
         # ---------------- GRID ----------------
-        rows, cols = 3,3
+        rows, cols = 3, 3
         zone_h = h // rows
         zone_w = w // cols
-
         zone_counts = np.zeros((rows, cols))
 
         # ---------------- DETECTION ----------------
         results = model(frame, conf=conf)
-
         people_count = 0
 
         for r in results:
             for box in r.boxes:
-                if int(box.cls[0]) == 0:
+                if int(box.cls[0]) == 0:  # person class
                     people_count += 1
 
                     x1,y1,x2,y2 = map(int, box.xyxy[0])
@@ -126,7 +121,6 @@ if uploaded_file:
 
                     row = min(cy//zone_h, rows-1)
                     col = min(cx//zone_w, cols-1)
-
                     zone_counts[row][col] += 1
 
         # ---------------- HEATMAP ----------------
@@ -134,7 +128,6 @@ if uploaded_file:
 
         for i in range(rows):
             for j in range(cols):
-
                 count = zone_counts[i][j]
 
                 if count == 0:
@@ -195,7 +188,7 @@ if uploaded_file:
                     cv2.FONT_HERSHEY_SIMPLEX,1,
                     color,2)
 
-        # ---------------- UPDATE DATA ----------------
+        # ---------------- DATA ----------------
         history.append(people_count)
 
         trend = "Stable"
@@ -205,10 +198,9 @@ if uploaded_file:
             elif history[-1] < history[-5]:
                 trend = "Decreasing"
 
-        # ---------------- DISPLAY VIDEO ----------------
+        # ---------------- DISPLAY ----------------
         stframe.image(frame, channels="BGR")
 
-        # ---------------- UPDATE METRICS ONLY ----------------
         people_metric.metric("👥 People", people_count)
         density_metric.metric("🔥 Density", density)
         risk_metric.metric("⚠ Risk", f"{risk}%")
@@ -221,7 +213,6 @@ if uploaded_file:
         else:
             status_box.error("🔴 HIGH RISK")
 
-        # ---------------- UPDATE GRAPH ONLY ----------------
         smooth = pd.Series(history).rolling(window=5).mean()
         chart_placeholder.line_chart(smooth)
 
